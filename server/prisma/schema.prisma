@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// SQLite for local dev. Switch to "postgresql" + update DATABASE_URL for production.
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String
+  displayName  String
+  avatar       String?
+  statusText   String   @default("")
+  presence     String   @default("online") // online | away | dnd | offline
+  role         String   @default("member") // owner | admin | member | guest
+  isActive     Boolean  @default(true)
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  messages      Message[]
+  roomsCreated  Room[]         @relation("RoomCreator")
+  roomMembers   RoomMember[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
+}
+
+model Room {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String   @default("")
+  avatar      String?
+  type        String   @default("public") // public | private | dm
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy   User?   @relation("RoomCreator", fields: [createdById], references: [id])
+  createdById String?
+
+  members  RoomMember[]
+  messages Message[]
+}
+
+model RoomMember {
+  id         String   @id @default(cuid())
+  role       String   @default("member") // admin | moderator | member
+  lastReadAt DateTime @default(now())
+  joinedAt   DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId String
+
+  @@unique([userId, roomId])
+  @@index([userId])
+  @@index([roomId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  content   String
+  isEdited  Boolean  @default(false)
+  isDeleted Boolean  @default(false)
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId String
+
+  replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id])
+  replyToId String?
+  replies   Message[] @relation("MessageReplies")
+
+  attachments Attachment[]
+
+  @@index([roomId, createdAt])
+  @@index([userId])
+}
+
+model Attachment {
+  id            String   @id @default(cuid())
+  fileName      String
+  fileType      String
+  fileSize      Int
+  storagePath   String
+  thumbnailPath String?
+  createdAt     DateTime @default(now())
+
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String
+
+  @@index([messageId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String   // e.g. "user.login", "room.create", "message.delete"
+  entityType String   // e.g. "user", "room", "message"
+  entityId   String
+  metadata   String   @default("{}") // JSON string
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  @@index([userId])
+  @@index([token])
+}
+
